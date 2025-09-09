@@ -1,0 +1,409 @@
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+/*
+ Single-file Java implementation containing multiple classes.
+ Public entry point: LeagueAppMain
+*/
+
+// Team class
+class Team {
+    private final int teamId;
+    private String name;
+    private String coach;
+    private String city;
+    private int points; // protected via encapsulation
+
+    public Team(int teamId, String name, String coach, String city) {
+        this.teamId = teamId;
+        this.name = name;
+        this.coach = coach;
+        this.city = city;
+        this.points = 0;
+    }
+
+    // Getters / Setters
+    public int getTeamId() { return teamId; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getCoach() { return coach; }
+    public void setCoach(String coach) { this.coach = coach; }
+    public String getCity() { return city; }
+    public void setCity(String city) { this.city = city; }
+    public int getPoints() { return points; }
+
+    // Encapsulated points update - package-private so only LeagueService (same package/file) can call
+    void addPoints(int p) { this.points += p; }
+    void resetPoints() { this.points = 0; }
+
+    public String toString() {
+        return String.format("%s (ID:%d) - Coach: %s, City: %s, Points: %d",
+                name, teamId, coach, city, points);
+    }
+
+    // some utility methods
+    public void printSummary() { System.out.println(this.toString()); }
+}
+
+// Abstract Player class
+abstract class Player {
+    protected final int playerId;
+    protected String name;
+    protected String role; // e.g., "Batsman", "Bowler", "Allrounder"
+    protected double rating; // 0-100
+    protected Map<String, Integer> stats; // general-purpose stats
+
+    public Player(int playerId, String name, String role, double rating) {
+        this.playerId = playerId;
+        this.name = name;
+        this.role = role;
+        this.rating = rating;
+        this.stats = new HashMap<>();
+    }
+
+    // Core getters/setters
+    public int getPlayerId() { return playerId; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
+    public double getRating() { return rating; }
+    public void setRating(double rating) { this.rating = rating; }
+    public Map<String,Integer> getStats() { return stats; }
+
+    // Stat helpers
+    public void addStat(String key, int value) { stats.put(key, stats.getOrDefault(key,0) + value); }
+    public int getStat(String key) { return stats.getOrDefault(key, 0); }
+
+    // Abstract method to update rating depending on player subtype
+    public abstract void ratingUpdate();
+
+    public String toString() {
+        return String.format("%s (ID:%d) - %s - Rating: %.1f - Stats: %s",
+                name, playerId, role, rating, stats.toString());
+    }
+
+    // A method used by award computation (polymorphism)
+    public double awardScore() {
+        // default award score - can be overridden
+        return rating + getStat("impact");
+    }
+
+    // extra methods to reach >=5 methods
+    public void resetStats() { stats.clear(); }
+    public void printProfile() { System.out.println(this.toString()); }
+}
+
+// Batsman inherits Player
+class Batsman extends Player {
+    public Batsman(int playerId, String name, double rating) {
+        super(playerId, name, "Batsman", rating);
+    }
+
+    // Override rating update based on runs scored
+    @Override
+    public void ratingUpdate() {
+        int runs = getStat("runs");
+        int fifties = getStat("50s");
+        double delta = runs * 0.05 + fifties * 1.5;
+        this.rating = Math.min(100.0, this.rating + delta);
+    }
+
+    @Override
+    public double awardScore() {
+        // prioritize runs
+        return getStat("runs") * 0.8 + rating;
+    }
+
+    public void addRuns(int r) { addStat("runs", r); }
+    public void addFifty() { addStat("50s", 1); }
+}
+
+// Bowler inherits Player
+class Bowler extends Player {
+    public Bowler(int playerId, String name, double rating) {
+        super(playerId, name, "Bowler", rating);
+    }
+
+    @Override
+    public void ratingUpdate() {
+        int wickets = getStat("wickets");
+        int fourW = getStat("4w");
+        double delta = wickets * 0.8 + fourW * 2.0;
+        this.rating = Math.min(100.0, this.rating + delta);
+    }
+
+    @Override
+    public double awardScore() {
+        // prioritize wickets
+        return getStat("wickets") * 1.0 + rating * 0.5;
+    }
+
+    public void addWickets(int w) { addStat("wickets", w); }
+    public void addFourW() { addStat("4w", 1); }
+}
+
+// Match class
+class Match {
+    private final int matchId;
+    private final Team homeTeam;
+    private final Team awayTeam;
+    private final LocalDateTime dateTime;
+    private String scoreline; // simple representation, e.g., "Home 200/8 - Away 198/9"
+    private Map<Player, Map<String,Integer>> scorecard; // detailed per-player stats
+    private String result; // "Home Win", "Away Win", "Draw", "TBD"
+
+    public Match(int matchId, Team homeTeam, Team awayTeam, LocalDateTime dateTime) {
+        this.matchId = matchId;
+        this.homeTeam = homeTeam;
+        this.awayTeam = awayTeam;
+        this.dateTime = dateTime;
+        this.scoreline = "";
+        this.scorecard = new HashMap<>();
+        this.result = "TBD";
+    }
+
+    public int getMatchId() { return matchId; }
+    public Team getHomeTeam() { return homeTeam; }
+    public Team getAwayTeam() { return awayTeam; }
+    public LocalDateTime getDateTime() { return dateTime; }
+    public String getScoreline() { return scoreline; }
+    public String getResult() { return result; }
+
+    public void setScoreline(String s) { this.scoreline = s; }
+    public void setResult(String r) { this.result = r; }
+
+    public void addPlayerStats(Player p, Map<String,Integer> stats) {
+        scorecard.put(p, stats);
+    }
+
+    public Map<Player,Map<String,Integer>> getScorecard() { return scorecard; }
+
+    public void printMatchCard() {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        System.out.println(String.format("Match %d: %s vs %s at %s\n  Scoreline: %s\n  Result: %s",
+                matchId, homeTeam.getName(), awayTeam.getName(), dateTime.format(fmt), scoreline, result));
+    }
+}
+
+// LeagueService to manage registration, fixtures, results, table, awards
+class LeagueService {
+    private Map<Integer, Team> teams = new HashMap<>();
+    private Map<Integer, Player> players = new HashMap<>();
+    private List<Match> fixtures = new ArrayList<>();
+    private int nextMatchId = 1;
+
+    // Register a team
+    public void registerTeam(Team t) {
+        if (teams.containsKey(t.getTeamId())) {
+            System.out.println("Team already registered: " + t.getName());
+            return;
+        }
+        teams.put(t.getTeamId(), t);
+        System.out.println("Registered team: " + t.getName());
+    }
+
+    // Register player and assign to a team (for demo we just store player)
+    public void registerPlayer(Player p) {
+        if (players.containsKey(p.getPlayerId())) {
+            System.out.println("Player already registered: " + p.getName());
+            return;
+        }
+        players.put(p.getPlayerId(), p);
+        System.out.println("Registered player: " + p.getName());
+    }
+
+    // Generate round-robin fixtures (simple next available dates)
+    public void generateFixtures(LocalDateTime startDate, int daysBetween) {
+        List<Team> teamList = new ArrayList<>(teams.values());
+        if (teamList.size() < 2) {
+            System.out.println("Not enough teams to generate fixtures.");
+            return;
+        }
+        fixtures.clear();
+        int mId = nextMatchId;
+        LocalDateTime d = startDate;
+        for (int i = 0; i < teamList.size(); i++) {
+            for (int j = i+1; j < teamList.size(); j++) {
+                Match match = new Match(mId++, teamList.get(i), teamList.get(j), d);
+                fixtures.add(match);
+                d = d.plusDays(daysBetween);
+            }
+        }
+        nextMatchId = mId;
+        System.out.println("Generated " + fixtures.size() + " fixtures.");
+    }
+
+    // Overloaded scheduleMatch - by teams and date
+    public Match scheduleMatch(int homeTeamId, int awayTeamId, LocalDateTime dateTime) {
+        Team home = teams.get(homeTeamId);
+        Team away = teams.get(awayTeamId);
+        if (home == null || away == null) throw new IllegalArgumentException("Invalid team ids");
+        Match m = new Match(nextMatchId++, home, away, dateTime);
+        fixtures.add(m);
+        return m;
+    }
+
+    // Overloaded recordResult - simple scoreline (method overloading)
+    public void recordResult(int matchId, String scoreline, String result) {
+        Match m = findMatch(matchId);
+        if (m == null) { System.out.println("Match not found: " + matchId); return; }
+        m.setScoreline(scoreline);
+        m.setResult(result);
+        applyPointsFromResult(m);
+        System.out.println("Recorded result for match " + matchId + ": " + result);
+    }
+
+    // Overloaded recordResult - detailed player stats map
+    public void recordResult(int matchId, Map<Player, Map<String,Integer>> detailedStats, String result, String scoreline) {
+        Match m = findMatch(matchId);
+        if (m == null) { System.out.println("Match not found: " + matchId); return; }
+        for (Map.Entry<Player, Map<String,Integer>> e : detailedStats.entrySet()) {
+            Player p = e.getKey();
+            Map<String,Integer> st = e.getValue();
+            // merge stats into player and into match
+            for (Map.Entry<String,Integer> kv : st.entrySet()) p.addStat(kv.getKey(), kv.getValue());
+            m.addPlayerStats(p, st);
+            // update rating per-player polymorphically
+            p.ratingUpdate();
+        }
+        m.setScoreline(scoreline);
+        m.setResult(result);
+        applyPointsFromResult(m);
+        System.out.println("Recorded detailed result for match " + matchId + ": " + result);
+    }
+
+    // Find match helper
+    private Match findMatch(int matchId) {
+        for (Match m : fixtures) if (m.getMatchId() == matchId) return m;
+        return null;
+    }
+
+    // Encapsulated method to apply points based on result; only LeagueService changes points
+    private void applyPointsFromResult(Match m) {
+        String res = m.getResult();
+        if (res.equalsIgnoreCase("Home Win")) {
+            m.getHomeTeam().addPoints(3);
+        } else if (res.equalsIgnoreCase("Away Win")) {
+            m.getAwayTeam().addPoints(3);
+        } else if (res.equalsIgnoreCase("Draw")) {
+            m.getHomeTeam().addPoints(1);
+            m.getAwayTeam().addPoints(1);
+        }
+    }
+
+    // Standings sorted by points desc
+    public List<Team> standings() {
+        List<Team> list = new ArrayList<>(teams.values());
+        list.sort((a,b) -> Integer.compare(b.getPoints(), a.getPoints()));
+        return list;
+    }
+
+    // Return upcoming matches (those with result TBD) sorted by date
+    public List<Match> upcomingMatches() {
+        List<Match> list = new ArrayList<>();
+        for (Match m : fixtures) if (m.getResult().equals("TBD")) list.add(m);
+        list.sort(Comparator.comparing(Match::getDateTime));
+        return list;
+    }
+
+    // Compute awards - polymorphism: players supply awardScore() differently
+    public void computeAwards() {
+        // Top scorer by 'runs'
+        Player topScorer = null;
+        int maxRuns = -1;
+        for (Player p : players.values()) {
+            int r = p.getStat("runs");
+            if (r > maxRuns) { maxRuns = r; topScorer = p; }
+        }
+
+        // MVP by awardScore()
+        Player mvp = null;
+        double best = Double.NEGATIVE_INFINITY;
+        for (Player p : players.values()) {
+            double s = p.awardScore();
+            if (s > best) { best = s; mvp = p; }
+        }
+
+        System.out.println("--- Awards ---");
+        if (topScorer != null) System.out.println("Top Scorer: " + topScorer.getName() + " (Runs: " + maxRuns + ")");
+        if (mvp != null) System.out.println("MVP: " + mvp.getName() + " (Score: " + String.format("%.2f", best) + ")");
+    }
+
+    // Utility print methods
+    public void printLeagueTable() {
+        System.out.println("--- League Table ---");
+        List<Team> table = standings();
+        System.out.printf("%-5s %-20s %-10s\n", "Pos", "Team", "Points");
+        for (int i = 0; i < table.size(); i++) {
+            Team t = table.get(i);
+            System.out.printf("%-5d %-20s %-10d\n", i+1, t.getName(), t.getPoints());
+        }
+    }
+
+    public void printUpcoming() {
+        System.out.println("--- Upcoming Matches ---");
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        for (Match m : upcomingMatches()) {
+            System.out.println(String.format("%d: %s vs %s at %s", m.getMatchId(), m.getHomeTeam().getName(), m.getAwayTeam().getName(), m.getDateTime().format(fmt)));
+        }
+    }
+
+    public void printAllFixtures() {
+        System.out.println("--- All Fixtures ---");
+        for (Match m : fixtures) m.printMatchCard();
+    }
+}
+
+// Main application
+public class LeagueAppMain {
+    public static void main(String[] args) {
+        LeagueService service = new LeagueService();
+
+        // Create teams
+        Team t1 = new Team(1, "Tigers", "Alice", "Chennai");
+        Team t2 = new Team(2, "Warriors", "Bob", "Coimbatore");
+        Team t3 = new Team(3, "Spartans", "Charlie", "Madurai");
+        Team t4 = new Team(4, "Raptors", "Diana", "Trichy");
+
+        service.registerTeam(t1);
+        service.registerTeam(t2);
+        service.registerTeam(t3);
+        service.registerTeam(t4);
+
+        // Create players
+        Batsman p1 = new Batsman(101, "Kumar", 72.5);
+        Batsman p2 = new Batsman(102, "Ravi", 68.0);
+        Bowler p3 = new Bowler(201, "Suresh", 65.0);
+        Bowler p4 = new Bowler(202, "Mani", 60.5);
+
+        service.registerPlayer(p1);
+        service.registerPlayer(p2);
+        service.registerPlayer(p3);
+        service.registerPlayer(p4);
+
+        // Generate fixtures
+        service.generateFixtures(LocalDateTime.of(2025,9,10,15,0), 2);
+        service.printAllFixtures();
+
+        // Record a simple result using scoreline overload
+        service.recordResult(1, "Tigers 180/7 - Warriors 175/9", "Home Win");
+
+        // Record a detailed result using stats overload
+        Map<Player, Map<String,Integer>> stats = new HashMap<>();
+        Map<String,Integer> s1 = new HashMap<>(); s1.put("runs", 90); s1.put("50s",1);
+        Map<String,Integer> s2 = new HashMap<>(); s2.put("wickets", 3);
+        stats.put(p1, s1); stats.put(p3, s2);
+        service.recordResult(2, stats, "Away Win", "Spartans 200/6 - Tigers 180/10");
+
+        // Print updated table
+        service.printLeagueTable();
+
+        // Compute awards
+        service.computeAwards();
+
+        // Print upcoming matches
+        service.printUpcoming();
+    }
+}
